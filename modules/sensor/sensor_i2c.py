@@ -171,6 +171,10 @@ class SensorI2C(Sensor):
         # acc + mag
         if self.available_sensors["MOTION"]["LSM303_ORIG"]:
             self.sensor["i2c_imu"] = self.sensor_lsm303
+        # acc + mag, diff libs
+        if self.available_sensors["MOTION"]["LSM303AGR"]:
+            self.sensor["i2c_imu"] = self.sensor_lsm303agr_accel
+            self.sensor["i2c_mag"] = self.sensor_lsm303agr_mag
         # acc + gyro
         if self.available_sensors["MOTION"]["LSM6DS"]:
             self.sensor["i2c_imu"] = self.sensor_lsm6ds
@@ -300,6 +304,7 @@ class SensorI2C(Sensor):
         self.available_sensors["MOTION"][
             "LSM303_ORIG"
         ] = self.detect_motion_lsm303_orig()
+        self.available_sensors["MOTION"]["LSM303AGR"] = self.detect_motion_lsm303AGR()
         self.available_sensors["MOTION"]["LIS3MDL"] = self.detect_motion_lis3mdl()
         self.available_sensors["MOTION"]["LSM6DS"] = self.detect_motion_lsm6ds()
         self.available_sensors["MOTION"]["ISM330DHCX"] = self.detect_motion_ism330dhcx()
@@ -312,6 +317,10 @@ class SensorI2C(Sensor):
             self.motion_sensor["ACC"] = True
             self.motion_sensor["MAG"] = True
             self.sensor_label["MAG"] = "LSM303"
+        if self.available_sensors["MOTION"]["LSM303AGR"]:
+            self.motion_sensor["ACC"] = True
+            self.motion_sensor["MAG"] = True
+            self.sensor_label["MAG"] = "LSM303AGR"
         if self.available_sensors["MOTION"]["LIS3MDL"]:
             self.motion_sensor["MAG"] = True
             self.sensor_label["MAG"] = "LIS3MDL"
@@ -553,6 +562,7 @@ class SensorI2C(Sensor):
                 or self.available_sensors["MOTION"]["ISM330DHCX"]
                 or self.available_sensors["MOTION"]["BNO055"]
                 or self.available_sensors["MOTION"]["ICM20948"]
+                or self.available_sensors["MOTION"]["LSM303AGR"]
             ):
                 # sometimes BNO055 returns [None, None, None] array occurs
                 self.values["acc_raw"] = (
@@ -640,6 +650,8 @@ class SensorI2C(Sensor):
             if self.available_sensors["MOTION"]["LSM303_ORIG"]:
                 self.sensor["i2c_imu"].read_mag()
                 self.values["mag_raw"] = np.array(self.sensor["i2c_imu"].values["mag"])
+            elif self.available_sensors["MOTION"]["LSM303AGR"]:
+                self.values["mag_raw"] = np.array(self.sensor["i2c_mag"].magnetic)
             elif self.available_sensors["MOTION"]["LIS3MDL"]:
                 self.values["mag_raw"] = np.array(self.sensor["i2c_mag"].magnetic)
             elif self.available_sensors["MOTION"]["LSM9DS1"]:
@@ -1401,6 +1413,25 @@ class SensorI2C(Sensor):
                 return False
             self.sensor_lsm303 = LSM303D()
             return True
+        except:
+            return False
+
+    def detect_motion_lsm303AGR(self):
+        try:
+            import board
+            import busio
+            import adafruit_lsm303_accel
+            import adafruit_lis2mdl
+
+            self.sensor_lsm303agr_accel = adafruit_lsm303_accel.LSM303_Accel(
+                busio.I2C(board.SCL, board.SDA)
+            )
+            self.sensor_lsm303agr_mag = adafruit_lis2mdl.LIS2MDL(
+                busio.I2C(board.SCL, board.SDA)
+            )
+
+            return True
+
         except:
             return False
 
