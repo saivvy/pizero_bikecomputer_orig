@@ -489,7 +489,14 @@ class LoggerCore:
         # update lap stats if value is not Null
         for k, v in value.items():
             # skip when null value(np.nan)
-            if k not in ["heart_rate", "cadence", "speed", "power", "distance", "accumulated_power"]:
+            if k not in [
+                "heart_rate",
+                "cadence",
+                "speed",
+                "power",
+                "distance",
+                "accumulated_power",
+            ]:
                 continue
             if np.isnan(v):
                 continue
@@ -612,9 +619,9 @@ class LoggerCore:
                 value["dem_altitude"],
                 self.sensor.values["I2C"]["heading"],
                 self.sensor.values["I2C"]["m_stat"],
-                # self.sensor.values['I2C']['acc'][0],
-                # self.sensor.values['I2C']['acc'][1],
-                # self.sensor.values['I2C']['acc'][2],
+                self.sensor.values["I2C"]["acc"][0],
+                self.sensor.values["I2C"]["acc"][1],
+                self.sensor.values["I2C"]["acc"][2],
                 self.sensor.values["I2C"]["acc_graph"][0],
                 self.sensor.values["I2C"]["acc_graph"][1],
                 self.sensor.values["I2C"]["acc_graph"][2],
