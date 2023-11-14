@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from logger import app_logger
-from modules._pyqt import QtCore, QtGui, pg, qasync
+from modules._pyqt import QT_COMPOSITION_MODE_DARKEN, QtCore, pg, qasync
 from modules.pyqt.pyqt_cuesheet_widget import CueSheetWidget
 from modules.pyqt.graph.pyqtgraph.CoursePlotItem import CoursePlotItem
 from modules.utils.geo import (
@@ -168,7 +168,7 @@ class MapWidget(BaseMapWidget):
         # map
         self.layout.addWidget(self.plot, 0, 0, 4, 3)
 
-        if self.config.display.has_touch():
+        if self.config.display.has_touch:
             # zoom
             self.layout.addWidget(self.buttons["zoomdown"], 0, 0)
             self.layout.addWidget(self.buttons["lock"], 1, 0)
@@ -594,7 +594,7 @@ class MapWidget(BaseMapWidget):
             p0,
             p1,
             overlay=False,
-            use_mbtiles=self.config.G_MAP_CONFIG[self.config.G_MAP]["use_mbtiles"],
+            use_mbtiles=self.config.G_MAP_CONFIG[self.config.G_MAP].get("use_mbtiles"),
         )
 
         await self.overlay_heatmap(drawn_main_map, p0, p1)
@@ -654,9 +654,9 @@ class MapWidget(BaseMapWidget):
                     map_config[map_name], "fl"
                 )
                 if timeline is not None:
-                    map_config[map_name]["fl"] = timeline
+                    map_config[map_name]["timeline"] = timeline
                     time_str = map_config[map_name]["nowtime"].strftime("%H%M")
-                    for tl in map_config[map_name]["fl"]:
+                    for tl in map_config[map_name]["timeline"]:
                         if tl["it"][0:4] == time_str:
                             map_config[map_name]["validtime"] = tl["it"]
                             map_config[map_name]["subdomain"] = tl["sd"]
@@ -802,7 +802,7 @@ class MapWidget(BaseMapWidget):
 
             imgitem = pg.ImageItem(imgarray)
             if overlay:
-                imgitem.setCompositionMode(QtGui.QPainter.CompositionMode_Darken)
+                imgitem.setCompositionMode(QT_COMPOSITION_MODE_DARKEN)
             imgarray_min_x, imgarray_max_y = get_lon_lat_from_tile_xy(
                 z, keys[0], keys[1]
             )
@@ -1049,23 +1049,22 @@ class MapWidget(BaseMapWidget):
     def get_geo_area(self, x, y):
         if np.isnan(x) or np.isnan(y):
             return np.nan, np.nan
+
+        tile_size = self.config.G_MAP_CONFIG[self.config.G_MAP]["tile_size"]
+
         tile_x, tile_y, _, _ = get_tilexy_and_xy_in_tile(
             self.zoomlevel,
             x,
             y,
-            self.config.G_MAP_CONFIG[self.config.G_MAP]["tile_size"],
+            tile_size,
         )
         pos_x0, pos_y0 = get_lon_lat_from_tile_xy(self.zoomlevel, tile_x, tile_y)
         pos_x1, pos_y1 = get_lon_lat_from_tile_xy(
             self.zoomlevel, tile_x + 1, tile_y + 1
         )
         return (
-            abs(pos_x1 - pos_x0)
-            / self.config.G_MAP_CONFIG[self.config.G_MAP]["tile_size"]
-            * (self.width() * self.map_cuesheet_ratio),
-            abs(pos_y1 - pos_y0)
-            / self.config.G_MAP_CONFIG[self.config.G_MAP]["tile_size"]
-            * self.height(),
+            abs(pos_x1 - pos_x0) / tile_size * (self.width() * self.map_cuesheet_ratio),
+            abs(pos_y1 - pos_y0) / tile_size * self.height(),
         )
 
     def get_arrow_angle_index(self, angle):

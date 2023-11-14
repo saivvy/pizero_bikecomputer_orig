@@ -15,6 +15,7 @@ from PIL import Image
 from logger import CustomRotatingFileHandler, app_logger
 from modules.helper.setting import Setting
 from modules.button_config import Button_Config
+from modules.state import AppState
 from modules.utils.cmd import (
     exec_cmd,
     exec_cmd_return_value,
@@ -101,7 +102,6 @@ class Config:
     G_LOG_DIR = "log"
     G_LOG_DB = os.path.join(G_LOG_DIR, "log.db")
     G_LOG_DEBUG_FILE = os.path.join(G_LOG_DIR, "debug.log")
-    G_LOG_START_DATE = None
 
     # asyncio semaphore
     G_COROUTINE_SEM = 100
@@ -320,9 +320,6 @@ class Config:
     # screenshot dir
     G_SCREENSHOT_DIR = "screenshots"
 
-    # debug switch (change with --debug option)
-    G_IS_DEBUG = False
-
     # dummy sampling value output (change with --demo option)
     G_DUMMY_OUTPUT = False
 
@@ -332,14 +329,9 @@ class Config:
     # Raspberry Pi detection (detect in __init__())
     G_IS_RASPI = False
 
-    # for read load average in sensor_core
-    G_PID = os.getpid()
-
     # stopwatch state
     G_MANUAL_STATUS = "INIT"
     G_STOPWATCH_STATUS = "INIT"  # with Auto Pause
-    # quit status variable
-    G_QUIT = False
 
     # Auto Pause Cutoff [m/s] (overwritten with setting.conf)
     # G_AUTOSTOP_CUTOFF = 0
@@ -426,8 +418,6 @@ class Config:
         "ORDER": ["HR", "SPD", "CDC", "PWR", "LGT", "CTRL", "TEMP"],
     }
 
-    # GPS Null value
-    G_GPS_NULLVALUE = "n/a"
     # GPS speed cutoff (the distance in 1 seconds at 0.36km/h is 10cm)
     G_GPS_SPEED_CUTOFF = G_AUTOSTOP_CUTOFF  # m/s
     # GPSd error handling
@@ -442,25 +432,7 @@ class Config:
     G_FULLSCREEN = False
 
     # display type (overwritten with setting.conf)
-    G_DISPLAY = "None"  # PiTFT, MIP, Papirus, MIP_Sharp
-
-    # screen size (need to add when adding new device)
-    G_AVAILABLE_DISPLAY = {
-        "None": {"size": (400, 240), "touch": True, "color": True},
-        "PiTFT": {"size": (320, 240), "touch": True, "color": True},
-        "MIP": {
-            "size": (400, 240),
-            "touch": False,
-            "color": True,
-        },  # LPM027M128C, LPM027M128B
-        "MIP_640": {"size": (640, 480), "touch": False, "color": True},  # LPM044M141A
-        "MIP_Sharp": {"size": (400, 240), "touch": False, "color": False},
-        "MIP_Sharp_320": {"size": (320, 240), "touch": False, "color": False},
-        "Papirus": {"size": (264, 176), "touch": False, "color": False},
-        "DFRobot_RPi_Display": {"size": (250, 122), "touch": False, "color": False},
-    }
-    G_WIDTH = 400
-    G_HEIGHT = 240
+    G_DISPLAY = "None"  # PiTFT, MIP, MIP_640, Papirus, MIP_Sharp, MIP_Sharp_320, DFRobot_RPi_Display
 
     G_DISPLAY_PARAM = {
         "SPI_CLOCK": 2000000,
@@ -472,8 +444,7 @@ class Config:
     G_DITHERING_CUTOFF_LOW_INDEX = 2
     G_DITHERING_CUTOFF_HIGH_INDEX = 1
 
-    # auto backlight with spi mip display
-    # (PiTFT actually needs max brightness under sunlights, so there are no implementation with PiTFT)
+    # auto backlight
     G_USE_AUTO_BACKLIGHT = True
     G_AUTO_BACKLIGHT_CUTOFF = 30
 
@@ -516,8 +487,6 @@ class Config:
     ]
 
     # map widgets
-    # max zoom
-    G_MAX_ZOOM = 0
     # for map dummy center: Tokyo station in Japan
     G_DUMMY_POS_X = 139.764710814819
     G_DUMMY_POS_Y = 35.68188106919333
@@ -643,6 +612,7 @@ class Config:
     bt_pan = None
     ble_uart = None
     setting = None
+    state = None
     gui = None
     gui_config = None
     boot_time = 0
@@ -664,7 +634,8 @@ class Config:
         args = parser.parse_args()
 
         if args.debug:
-            self.G_IS_DEBUG = True
+            app_logger.setLevel(logging.DEBUG)
+            app_logger.debug(args)
         if args.fullscreen:
             self.G_FULLSCREEN = True
         if args.demo:
@@ -673,14 +644,10 @@ class Config:
             self.G_LAYOUT_FILE = args.layout
         if args.headless:
             self.G_HEADLESS = True
-        # show options
-        if self.G_IS_DEBUG:
-            app_logger.setLevel(logging.DEBUG)
-            app_logger.debug(args)
 
-        # read setting.conf and settings.pickle
+        # read setting.conf and state.pickle
         self.setting = Setting(self)
-        self.setting.read()
+        self.state = AppState()
 
         # make sure all folders exist
         os.makedirs(self.G_SCREENSHOT_DIR, exist_ok=True)
@@ -714,20 +681,11 @@ class Config:
             for key in map_config:
                 if "tile_size" not in map_config[key]:
                     map_config[key]["tile_size"] = 256
-                if "referer" not in map_config[key]:
-                    map_config[key]["referer"] = None
-                if "use_mbtiles" not in map_config[key]:
-                    map_config[key]["use_mbtiles"] = False
-
-                if "user_agent" in map_config[key] and map_config[key]["user_agent"]:
-                    map_config[key]["user_agent"] = self.G_PRODUCT
-                else:
-                    map_config[key]["user_agent"] = None
 
         if self.G_MAP not in self.G_MAP_CONFIG:
             app_logger.error(f"{self.G_MAP} does not exist in {self.G_MAP_LIST}")
             self.G_MAP = "toner"
-        if self.G_MAP_CONFIG[self.G_MAP]["use_mbtiles"] and not os.path.exists(
+        if self.G_MAP_CONFIG[self.G_MAP].get("use_mbtiles") and not os.path.exists(
             os.path.join("maptile", f"{self.G_MAP}.mbtiles")
         ):
             self.G_MAP_CONFIG[self.G_MAP]["use_mbtiles"] = False
@@ -759,9 +717,9 @@ class Config:
     def init_loop(self, call_from_gui=False):
         if self.G_GUI_MODE == "PyQt":
             if call_from_gui:
-                #asyncio.set_event_loop(self.loop)
                 # workaround for latest qasync and older version(~0.24.0)
                 asyncio.events._set_running_loop(self.loop)
+                asyncio.set_event_loop(self.loop)
                 self.start_coroutine()
         else:
             self.loop = asyncio.get_event_loop()
@@ -819,8 +777,8 @@ class Config:
                     self.logger.sensor.sensor_gps,
                     self.gui,
                     (
-                        self.setting.get_config_pickle("GB", False),
-                        self.setting.get_config_pickle("GB_gps", False),
+                        self.state.get_value("GB", False),
+                        self.state.get_value("GB_gps", False),
                     ),
                 )
 
@@ -836,15 +794,13 @@ class Config:
 
         # resume BT / thingsboard
         if self.G_IS_RASPI:
-            self.G_BT_USE_ADDRESS = self.setting.get_config_pickle(
+            self.G_BT_USE_ADDRESS = self.state.get_value(
                 "G_BT_USE_ADDRESS", self.G_BT_USE_ADDRESS
             )
-            self.G_THINGSBOARD_API["STATUS"] = self.setting.get_config_pickle(
+            self.G_THINGSBOARD_API["STATUS"] = self.state.get_value(
                 "G_THINGSBOARD_API_STATUS", self.G_THINGSBOARD_API["STATUS"]
             )
-            self.G_THINGSBOARD_API[
-                "AUTO_UPLOAD_VIA_BT"
-            ] = self.setting.get_config_pickle(
+            self.G_THINGSBOARD_API["AUTO_UPLOAD_VIA_BT"] = self.state.get_value(
                 "AUTO_UPLOAD_VIA_BT", self.G_THINGSBOARD_API["AUTO_UPLOAD_VIA_BT"]
             )
             # resume BT tethering
@@ -903,7 +859,7 @@ class Config:
         self.display = display
 
     def check_map_dir(self):
-        if not self.G_MAP_CONFIG[self.G_MAP]["use_mbtiles"]:
+        if not self.G_MAP_CONFIG[self.G_MAP].get("use_mbtiles"):
             os.makedirs(os.path.join("maptile", self.G_MAP), exist_ok=True)
         os.makedirs(os.path.join("maptile", self.G_HEATMAP_OVERLAY_MAP), exist_ok=True)
         os.makedirs(os.path.join("maptile", self.G_RAIN_OVERLAY_MAP), exist_ok=True)
@@ -969,11 +925,10 @@ class Config:
         if self.G_MANUAL_STATUS == "START":
             self.logger.start_and_stop_manual()
         self.display.quit()
-        self.G_QUIT = True
 
         await self.logger.quit()
         self.setting.write_config()
-        self.setting.delete_config_pickle()
+        self.state.delete()
 
         await asyncio.sleep(0.5)
         await self.kill_tasks()
@@ -1179,6 +1134,7 @@ class Config:
     async def get_altitude_from_tile(self, pos):
         if np.isnan(pos[0]) or np.isnan(pos[1]):
             return np.nan
+
         z = self.G_DEM_MAP_CONFIG[self.G_DEM_MAP]["fix_zoomlevel"]
         f_x, f_y, p_x, p_y = get_tilexy_and_xy_in_tile(z, pos[0], pos[1], 256)
         filename = get_maptile_filename(self.G_DEM_MAP, z, f_x, f_y)
